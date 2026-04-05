@@ -1,5 +1,6 @@
 
 import streamlit as st
+st.set_page_config(page_title='SuperSafe AI', layout='wide')
 from streamlit_ace import st_ace
 from security_utils import generate_entropy_histogram_data, AVERAGE_BASELINE_ENTROPY
 import sqlite3
@@ -18,7 +19,12 @@ if 'code_input' not in st.session_state:
     st.session_state.code_input = ''
 
 def login_page():
-    st.set_page_config(layout="centered", initial_sidebar_state="collapsed")
+    # Toggle between Login and Sign Up
+    st.session_state.auth_mode = st.radio("", ["Login", "Sign Up"], key="auth_mode_selector", horizontal=True)
+
+
+
+
     st.markdown("<h1 style='text-align: center;'>SuperSafe AI Mentor Login</h1>", unsafe_allow_html=True)
 
     with st.container():
@@ -63,44 +69,42 @@ def login_page():
         with st.form("login_form"):
             st.text_input("Username", key="username")
             st.text_input("Password", type="password", key="password")
-            if st.form_submit_button("Login"):
+            submit_text = 'Login' if st.session_state.auth_mode == 'Login' else 'Create Account'
+            if st.form_submit_button(submit_text):
                 # Placeholder for actual database verification
-                # For now, let's initialize the database and add a test user if it doesn't exist
                 initialize_db()
-
-                # Example: Add a test user if not exists
-                # This part would typically be in a registration flow, not login
-                # For demonstration, we'll keep it simple.
                 conn = sqlite3.connect("users.db")
                 c = conn.cursor()
-                c.execute("SELECT * FROM users WHERE username = ?", (st.session_state.username,))
-                user = c.fetchone()
 
-                if not user:
-                    # Register new user (for demonstration purposes, in a real app this would be a separate registration flow)
-                    hashed_password, salt = hash_password(st.session_state.password)
-                    c.execute("INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)",
-                              (st.session_state.username, hashed_password, salt))
-                    conn.commit()
-                    conn.close()
-                    st.success("User registered and logged in!")
-                    st.session_state.logged_in = True
-                    set_page("dashboard")
-                    st.rerun()
-                else:
-                    # Verify password for existing user
-                    stored_hash, stored_salt = user[1], user[2]
-                    if verify_password(st.session_state.password, stored_hash, stored_salt):
-                        st.session_state.logged_in = True
-                        set_page("dashboard")
-                        st.rerun()
+                if st.session_state.auth_mode == "Login":
+                    c.execute("SELECT * FROM users WHERE username = ?", (st.session_state.username,))
+                    user = c.fetchone()
+                    if user:
+                        stored_hash, stored_salt = user[1], user[2]
+                        if verify_password(st.session_state.password, stored_hash, stored_salt):
+                            st.session_state.logged_in = True
+                            set_page("dashboard")
+                            st.rerun()
+                        else:
+                            st.error("Invalid username or password")
                     else:
                         st.error("Invalid username or password")
+                else: # Sign Up mode
+                    c.execute("SELECT * FROM users WHERE username = ?", (st.session_state.username,))
+                    user = c.fetchone()
+                    if user:
+                        st.error("Username already exists. Please choose a different one.")
+                    else:
+                        hashed_password, salt = hash_password(st.session_state.password)
+                        c.execute("INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)",
+                                  (st.session_state.username, hashed_password, salt))
+                        conn.commit()
+                        st.success("Account created successfully! Please log in.")
+
                 conn.close()
 
-
 def dashboard_page():
-    st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
+
     st.markdown("""
         <style>
             .stApp { 
@@ -171,7 +175,7 @@ def dashboard_page():
             st.button("Browse Modules", on_click=set_page, args=("training",))
 
 def workspace_page():
-    st.set_page_config(layout="wide", initial_sidebar_state="expanded")
+
     st.markdown("""
         <style>
             .stApp {
