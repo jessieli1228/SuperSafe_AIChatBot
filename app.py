@@ -361,7 +361,7 @@ def workspace_page():
                     response = client.chat.completions.create(
                         model="gemini-2.5-flash",
                         messages=[
-                            {"role": "system", "content": "You are a Python Security Mentor. Be concise and focus on Python code security."},
+                            {"role": "system", "content": "You are a Python Security Mentor. Be concise and focus on Python code security. At the end of every response, provide one brief, engaging follow-up question starting with 'Would you like to...' to help the user dive deeper into the security implications of their code (If there is no code, but just a regular chat, engage with the context of the chat."},
                             {"role": "user", "content": full_message}
                         ]
                     )
