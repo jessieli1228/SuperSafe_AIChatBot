@@ -283,19 +283,29 @@ def workspace_page():
         st.rerun()
         return
 
-    left_col, right_col = st.columns([0.75, 0.25])
+    # This creates the two-pane layout: 2 parts for code/graph, 1 part for chat
+    left_col, right_col = st.columns([2, 1], gap="medium")
 
     with left_col:
-        st.title('Active Workspace')
+        # --- TOP: Editor Box ---
+        st.markdown("### 📝 Python Workspace")
+        # Ensure the \'NoneType\' safety check we did earlier is still here
+        editor_content = (st.session_state.get("code_editor") or "").strip()
+        
         code_content = st_ace(value=st.session_state.code_input, language="python", theme="dracula", height=500, key="code_editor")
 
         if code_content:
             histogram_data = generate_entropy_histogram_data(code_content)
             max_entropy = max(histogram_data) if histogram_data else 0.0
             if max_entropy > DANGER_THRESHOLD:
-                st.error(f'⚠️ CRITICAL RISK: High-entropy string detected above {DANGER_THRESHOLD:.2f} bits.')
+                st.error(f"⚠️ CRITICAL RISK: High-entropy string detected above {DANGER_THRESHOLD:.2f} bits.")
+        
+        st.button("← Back to Dashboard", on_click=lambda: st.session_state.update({"page": "dashboard"}))
 
-            st.markdown("<h3>Security Distribution</h3>", unsafe_allow_html=True)
+        # --- BOTTOM: Graph Box ---
+        st.markdown("---")
+        st.markdown("### 📊 Security Distribution")
+        if code_content:
             if histogram_data:
                 import pandas as pd
                 import plotly.graph_objects as go
@@ -318,44 +328,46 @@ def workspace_page():
                 st.metric(label="Max Line Entropy", value=f"{max_entropy:.2f}", delta=f"{max_entropy - DANGER_THRESHOLD:.2f}", delta_color="inverse")
             else:
                 st.info("Enter code to see entropy distribution.")
-            st.button("Back to Dashboard", on_click=set_page, args=("dashboard",))
-
         else:
             st.info("Enter code to see entropy distribution.")
-        
-
 
     with right_col:
-        st.markdown("<h3>AI Mentor</h3>", unsafe_allow_html=True)
-        if "messages" not in st.session_state:
-            st.session_state.messages = [{ "role": "model", "text": "Hello! I\"m your AI Security Mentor. How can I help you code securely today?"}]
+        # --- THE CHAT BOX ---
+        st.markdown("### 🤖 AI Mentor")
+        
+        # height=650 creates a fixed window so it doesn\'t get pushed down
+        # border=True creates the "Boxed" look you requested
+        with st.container(height=650, border=True):
+            # Initialize messages if not already present
+            if "messages" not in st.session_state:
+                st.session_state.messages = []
 
-        with st.container(height=500):
             for message in st.session_state.messages:
                 with st.chat_message(message["role"]):
-                    st.markdown(message["text"])
-        
-        if prompt := st.chat_input("Ask your mentor..."):
-            st.session_state.messages.append({"role": "user", "text": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
+                    st.markdown(message["content"])
             
-            full_prompt = f"""You are a Security Mentor. Explain if the code is safe based on the entropy scores. Here is the code: {code_content}\nHere is the user\'s question: {prompt}"""
+            # The chat input should stay at the bottom of THIS column
+            if prompt := st.chat_input("Ask your mentor..."):
+                # Display user message immediately in the box
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                with st.chat_message("user"):
+                    st.markdown(prompt)
 
-            messages = [
-                {"role": "system", "content": "You are a professional secure coding mentor."},
-                {"role": "user", "content": f"Please analyze the security of the following code:\n\n{code_content}"}
-            ]
-
-            completion = client.chat.completions.create(
-                model="gemini-2.5-flash", 
-                messages=messages
-            )
-
-
-            ai_response = completion.choices[0].message.content
-            st.write(ai_response)
-
+                # Build Context (Python only, no Java hallucinations!)
+                full_message = f"Context (Python):\n{editor_content}\n\nQuestion: {prompt}" if editor_content else prompt
+                
+                # AI API Call
+                with st.chat_message("assistant"):
+                    response = client.chat.completions.create(
+                        model="gemini-2.5-flash",
+                        messages=[
+                            {"role": "system", "content": "You are a Python Security Mentor. Be concise and focus on Python code security."},
+                            {"role": "user", "content": full_message}
+                        ]
+                    )
+                    answer = response.choices[0].message.content
+                    st.markdown(answer)
+                    st.session_state.messages.append({"role": "assistant", "content": answer})
 
 if st.session_state.page == "home":
     home_page()
