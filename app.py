@@ -1,8 +1,18 @@
 
 import streamlit as st
 import sqlite3
-from security_utils import generate_entropy_histogram_data, AVERAGE_BASELINE_ENTROPY
+from openai import OpenAI
+
+client = OpenAI(
+    api_key=st.secrets["GEMINI_API_KEY"],
+    base_url="https://api.apiyi.com/v1"
+)
+from security_utils import generate_entropy_histogram_data
+
 from streamlit_ace import st_ace
+
+AVERAGE_BASELINE = 3.01
+DANGER_THRESHOLD = 4.50
 from database_utils import initialize_db, hash_password, verify_password
 
 st.set_page_config(page_title='SuperSafe AI', layout='wide', initial_sidebar_state='collapsed')
@@ -82,8 +92,7 @@ if 'code_input' not in st.session_state:
 
 def login_page():
     # Toggle between Login and Sign Up
-    st.session_state.auth_mode = st.radio("", ["Login", "Sign Up"], key="auth_mode_selector", horizontal=True)
-
+    st.session_state.auth_mode = st.radio("", ["Login", "Sign Up"], key="auth_toggle_radio", horizontal=True)
 
 
 
@@ -244,11 +253,7 @@ def workspace_page():
                 background-color: #0e1117;
                 color: #ffffff;
             }
-            .stSidebar {
-                background-color: #1e1e1e;
-                color: #ffffff;
-                padding: 20px;
-            }
+
             .stTextArea > label {
                 color: #ffffff;
             }
@@ -278,34 +283,79 @@ def workspace_page():
         st.rerun()
         return
 
-    with st.sidebar:
-        st.markdown("<h2>Security Entropy Meter</h2>", unsafe_allow_html=True)
-        st.progress(85) # Example progress
-        st.write("Current code security level.")
-        st.chat_input("Ask your AI Mentor:")
+    left_col, right_col = st.columns([0.75, 0.25])
 
-        st.markdown("<h3>Security Distribution</h3>", unsafe_allow_html=True)
-        if st.session_state.code_input:
-            histogram_data = generate_entropy_histogram_data(st.session_state.code_input)
+    with left_col:
+        st.title('Active Workspace')
+        code_content = st_ace(value=st.session_state.code_input, language="python", theme="dracula", height=500, key="code_editor")
+
+        if code_content:
+            histogram_data = generate_entropy_histogram_data(code_content)
+            max_entropy = max(histogram_data) if histogram_data else 0.0
+            if max_entropy > DANGER_THRESHOLD:
+                st.error(f'⚠️ CRITICAL RISK: High-entropy string detected above {DANGER_THRESHOLD:.2f} bits.')
+
+            st.markdown("<h3>Security Distribution</h3>", unsafe_allow_html=True)
             if histogram_data:
                 import pandas as pd
-                df = pd.DataFrame({"Line Number": range(1, len(histogram_data) + 1), "Entropy": histogram_data})
-                st.bar_chart(df, x="Line Number", y="Entropy")
-                st.info(f"Average Baseline Entropy: {AVERAGE_BASELINE_ENTROPY:.2f}")
+                import plotly.graph_objects as go
 
-                # High entropy alert logic
-                for i, entropy_value in enumerate(histogram_data):
-                    if entropy_value > AVERAGE_BASELINE_ENTROPY + 1.5:
-                        st.warning(f"High Entropy Detected on Line {i+1}: This looks like a hardcoded secret (API Key or Password). Please move this to an environment variable.")
+                df = pd.DataFrame({"Line Number": range(1, len(histogram_data) + 1), "Entropy": histogram_data})
+                colors = ["#FF4B4B" if entropy > DANGER_THRESHOLD else "#636EFA" for entropy in df["Entropy"]]
+                fig = go.Figure(data=[go.Bar(x=df["Line Number"], y=df["Entropy"], marker_color=colors)])
+
+                # Add vertical reference lines
+                fig.add_hline(y=AVERAGE_BASELINE, line_dash="dash", line_color="green", annotation_text="Average Baseline Entropy", annotation_position="top right")
+                fig.add_hline(y=DANGER_THRESHOLD, line_dash="solid", line_color="red", annotation_text="Danger", annotation_position="top left")
+
+                fig.update_layout(
+                    xaxis_title="Line Number",
+                    yaxis_title="Entropy Score",
+                    font=dict(color="white")
+                )
+
+                st.plotly_chart(fig, use_container_width=True, theme=None)
+                st.metric(label="Max Line Entropy", value=f"{max_entropy:.2f}", delta=f"{max_entropy - DANGER_THRESHOLD:.2f}", delta_color="inverse")
             else:
                 st.info("Enter code to see entropy distribution.")
+            st.button("Back to Dashboard", on_click=set_page, args=("dashboard",))
+
         else:
             st.info("Enter code to see entropy distribution.")
+        
 
-        st.button("Back to Dashboard", on_click=set_page, args=("dashboard",))
 
-    st.markdown("<h1 style=\'color: #4CAF50;\'>Active Workspace</h1>", unsafe_allow_html=True)
-    st_ace(value=st.session_state.code_input, language="python", theme="dracula", height=500, key="code_input")
+    with right_col:
+        st.markdown("<h3>AI Mentor</h3>", unsafe_allow_html=True)
+        if "messages" not in st.session_state:
+            st.session_state.messages = [{ "role": "model", "text": "Hello! I\"m your AI Security Mentor. How can I help you code securely today?"}]
+
+        with st.container(height=500):
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["text"])
+        
+        if prompt := st.chat_input("Ask your mentor..."):
+            st.session_state.messages.append({"role": "user", "text": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            
+            full_prompt = f"""You are a Security Mentor. Explain if the code is safe based on the entropy scores. Here is the code: {code_content}\nHere is the user\'s question: {prompt}"""
+
+            messages = [
+                {"role": "system", "content": "You are a professional secure coding mentor."},
+                {"role": "user", "content": f"Please analyze the security of the following code:\n\n{code_content}"}
+            ]
+
+            completion = client.chat.completions.create(
+                model="gemini-2.5-flash", 
+                messages=messages
+            )
+
+
+            ai_response = completion.choices[0].message.content
+            st.write(ai_response)
+
 
 if st.session_state.page == "home":
     home_page()
