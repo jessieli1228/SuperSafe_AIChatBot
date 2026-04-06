@@ -15,7 +15,7 @@ AVERAGE_BASELINE = 3.01
 DANGER_THRESHOLD = 4.50
 from database_utils import initialize_db, hash_password, verify_password
 
-st.set_page_config(page_title='SuperSafe AI', layout='wide', initial_sidebar_state='collapsed')
+st.set_page_config(page_title="SuperSafe AI", layout="wide", initial_sidebar_state="collapsed")
 
 def set_page(page):
     st.session_state.page = page
@@ -89,14 +89,13 @@ if "logged_in" not in st.session_state:
 
 if 'code_input' not in st.session_state:
     st.session_state.code_input = ''
-
 def login_page():
     # Toggle between Login and Sign Up
     st.session_state.auth_mode = st.radio("", ["Login", "Sign Up"], key="auth_toggle_radio", horizontal=True)
 
 
 
-    st.markdown("<h1 style='text-align: center;'>SuperSafe AI Mentor Login</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style=\'text-align: center;\'>SuperSafe AI Mentor Login</h1>", unsafe_allow_html=True)
 
     with st.container():
         st.markdown(f"""
@@ -218,7 +217,7 @@ def dashboard_page():
         st.rerun()
         return
 
-    st.markdown("<h1 style='color: #4CAF50;'>Dashboard</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style=\'color: #4CAF50;\'>Dashboard</h1>", unsafe_allow_html=True)
 
     # Top stats bar
     st.write("### Security Points")
@@ -244,6 +243,53 @@ def dashboard_page():
             st.markdown("<h2>Training Modules</h2>", unsafe_allow_html=True)
             st.write("Enhance your secure coding skills.")
             st.button("Browse Modules", on_click=set_page, args=("training",))
+
+# New unified chatbot render function
+def render_unified_chatbot(context_label, context_data=""):
+    """
+    One bot to rule them all. 
+    Handles both Workspace code and Learning Page tutorials.
+    """
+    st.markdown("### 🤖 Security & Study Mentor")
+    
+    with st.container(height=650, border=True):
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
+
+        # Display history
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+        
+        # Chat Input
+        if prompt := st.chat_input(f"Ask your {context_label} mentor..."):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+            # --- THE UNIFIED BRAIN ---
+            # We combine the Page Context (Code or Lesson) with the User Question
+            full_message = f"[{context_label} Context]\n{context_data}\n\nUser Question: {prompt}"
+            
+            with st.chat_message("assistant"):
+                response = client.chat.completions.create(
+                    model="gemini-2.5-flash",
+                    messages=[
+                        {
+                            "role": "system", 
+                            "content": (
+                                "You are a Python Security & Education Mentor. "
+                                "Your goal is to help users write secure code and understand cybersecurity concepts. "
+                                "Be concise, encouraging, and always provide one brief \'Would you like to...\' "
+                                "follow-up question at the end of every response."
+                            )
+                        },
+                        {"role": "user", "content": full_message}
+                    ]
+                )
+                answer = response.choices[0].message.content
+                st.markdown(answer)
+                st.session_state.messages.append({"role": "assistant", "content": answer})
 
 def workspace_page():
 
@@ -332,42 +378,33 @@ def workspace_page():
             st.info("Enter code to see entropy distribution.")
 
     with right_col:
-        # --- THE CHAT BOX ---
-        st.markdown("### 🤖 AI Mentor")
+        # Pass the editor code as context
+        render_unified_chatbot("Workspace", editor_content)
+
+def learning_page():
+    left_col, right_col = st.columns([2, 1], gap="medium")
+
+    with left_col:
+        st.title("📚 Learning Center")
         
-        # height=650 creates a fixed window so it doesn\'t get pushed down
-        # border=True creates the "Boxed" look you requested
-        with st.container(height=650, border=True):
-            # Initialize messages if not already present
-            if "messages" not in st.session_state:
-                st.session_state.messages = []
+        # Category Selector
+        level = st.radio("Select Level:", ["Beginner", "Intermediate"], horizontal=True)
+        
+        if level == "Beginner":
+            st.markdown("### 🟢 Beginner: Introduction to Entropy")
+            st.write("In this lesson, we learn why random-looking code is actually safer...")
+            # Add more text tutorials here
+        else:
+            st.markdown("### 🟡 Intermediate: Secure Password Hashing")
+            st.write("Learn how to use bcrypt and why salting prevents rainbow table attacks...")
 
-            for message in st.session_state.messages:
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
-            
-            # The chat input should stay at the bottom of THIS column
-            if prompt := st.chat_input("Ask your mentor..."):
-                # Display user message immediately in the box
-                st.session_state.messages.append({"role": "user", "content": prompt})
-                with st.chat_message("user"):
-                    st.markdown(prompt)
+        if st.button("← Back to Dashboard"):
+            st.session_state.update({"page": "dashboard"})
 
-                # Build Context (Python only, no Java hallucinations!)
-                full_message = f"Context (Python):\n{editor_content}\n\nQuestion: {prompt}" if editor_content else prompt
-                
-                # AI API Call
-                with st.chat_message("assistant"):
-                    response = client.chat.completions.create(
-                        model="gemini-2.5-flash",
-                        messages=[
-                            {"role": "system", "content": "You are a Python Security Mentor. Be concise and focus on Python code security. At the end of every response, provide one brief, engaging follow-up question starting with 'Would you like to...' to help the user dive deeper into the security implications of their code (If there is no code, but just a regular chat, engage with the context of the chat."},
-                            {"role": "user", "content": full_message}
-                        ]
-                    )
-                    answer = response.choices[0].message.content
-                    st.markdown(answer)
-                    st.session_state.messages.append({"role": "assistant", "content": answer})
+    with right_col:
+        # Pass the current level as context
+        render_unified_chatbot("Learning Center", f"Current Level: {level}")
+
 
 if st.session_state.page == "home":
     home_page()
@@ -377,3 +414,5 @@ elif st.session_state.page == "dashboard":
     dashboard_page()
 elif st.session_state.page == "workspace":
     workspace_page()
+elif st.session_state.page == "training":
+    learning_page()
