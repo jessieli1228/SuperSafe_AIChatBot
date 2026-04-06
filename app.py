@@ -304,9 +304,9 @@ def workspace_page():
                 colors = ["#FF4B4B" if entropy > DANGER_THRESHOLD else "#636EFA" for entropy in df["Entropy"]]
                 fig = go.Figure(data=[go.Bar(x=df["Line Number"], y=df["Entropy"], marker_color=colors)])
 
-                # Add vertical reference lines
-                fig.add_hline(y=AVERAGE_BASELINE, line_dash="dash", line_color="green", annotation_text="Average Baseline Entropy", annotation_position="top right")
-                fig.add_hline(y=DANGER_THRESHOLD, line_dash="solid", line_color="red", annotation_text="Danger", annotation_position="top left")
+                # Add reference lines
+                fig.add_hline(y=AVERAGE_BASELINE, line_dash="dash", line_color="green", annotation_text=f"Average Baseline Entropy ({AVERAGE_BASELINE:.2f})", annotation_position="top right")
+                fig.add_hline(y=DANGER_THRESHOLD, line_dash="solid", line_color="red", annotation_text=f"Danger ({DANGER_THRESHOLD:.2f})", annotation_position="top left")
 
                 fig.update_layout(
                     xaxis_title="Line Number",
