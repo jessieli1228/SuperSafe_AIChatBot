@@ -1,4 +1,3 @@
-
 import streamlit as st
 import sqlite3
 from openai import OpenAI
@@ -13,8 +12,7 @@ from streamlit_ace import st_ace
 
 AVERAGE_BASELINE = 3.01
 DANGER_THRESHOLD = 4.50
-from database_utils import initialize_db, hash_password, verify_password
-
+from database_utils import initialize_db, hash_password, verify_password, get_user_id, save_message, load_messages, clear_chat_history
 st.set_page_config(page_title="SuperSafe AI", layout="wide", initial_sidebar_state="collapsed")
 
 def set_page(page):
@@ -153,6 +151,8 @@ def login_page():
                         stored_hash, stored_salt = user[1], user[2]
                         if verify_password(st.session_state.password, stored_hash, stored_salt):
                             st.session_state.logged_in = True
+                            st.session_state.user_id = user[0]  # Store user_id
+                            st.session_state.messages = load_messages(st.session_state.user_id) # Load messages
                             set_page("dashboard")
                             st.rerun()
                         else:
@@ -252,9 +252,17 @@ def render_unified_chatbot(context_label, context_data=""):
     """
     st.markdown("### 🤖 Security & Study Mentor")
     
+    # Clear Chat History Button
+    if st.button("Clear Chat History"):
+        clear_chat_history(st.session_state.user_id)
+        st.session_state.messages = []
+        # Add a system message to indicate chat cleared for AI context
+        st.session_state.messages.append({"role": "system", "content": "User has cleared the chat history. Start fresh."})
+        st.rerun()
+
     with st.container(height=650, border=True):
         if "messages" not in st.session_state:
-            st.session_state.messages = []
+            st.session_state.messages = load_messages(st.session_state.user_id)
 
         # Display history
         for message in st.session_state.messages:
@@ -264,6 +272,7 @@ def render_unified_chatbot(context_label, context_data=""):
         # Chat Input
         if prompt := st.chat_input(f"Ask your {context_label} mentor..."):
             st.session_state.messages.append({"role": "user", "content": prompt})
+            save_message(st.session_state.user_id, 'user', prompt)
             with st.chat_message("user"):
                 st.markdown(prompt)
 
@@ -271,6 +280,14 @@ def render_unified_chatbot(context_label, context_data=""):
             # We combine the Page Context (Code or Lesson) with the User Question
             full_message = f"[{context_label} Context]\n{context_data}\n\nUser Question: {prompt}"
             
+            # Include all past messages for context, including the new system message if present
+            ai_messages = []
+            if st.session_state.messages and st.session_state.messages[0]["role"] == "system":
+                ai_messages.append(st.session_state.messages[0])
+            ai_messages.extend([{"role": m["role"], "content": m["content"]} for m in st.session_state.messages if m["role"] != "system"])
+            
+            ai_messages.append({"role": "user", "content": full_message})
+
             with st.chat_message("assistant"):
                 response = client.chat.completions.create(
                     model="gemini-2.5-flash",
@@ -280,16 +297,17 @@ def render_unified_chatbot(context_label, context_data=""):
                             "content": (
                                 "You are a Python Security & Education Mentor. "
                                 "Your goal is to help users write secure code and understand cybersecurity concepts. "
-                                "Be concise, encouraging, and always provide one brief \'Would you like to...\' "
+                                "Be concise, encouraging, and always provide one brief \\\'Would you like to...\\\' "
                                 "follow-up question at the end of every response."
                             )
                         },
-                        {"role": "user", "content": full_message}
+                        *ai_messages # Pass all messages for context
                     ]
                 )
                 answer = response.choices[0].message.content
                 st.markdown(answer)
                 st.session_state.messages.append({"role": "assistant", "content": answer})
+                save_message(st.session_state.user_id, "assistant", answer)
 
 def workspace_page():
 
