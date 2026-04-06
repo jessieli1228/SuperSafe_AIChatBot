@@ -1,16 +1,78 @@
 
 import streamlit as st
-st.set_page_config(page_title='SuperSafe AI', layout='wide')
-from streamlit_ace import st_ace
-from security_utils import generate_entropy_histogram_data, AVERAGE_BASELINE_ENTROPY
 import sqlite3
+from security_utils import generate_entropy_histogram_data, AVERAGE_BASELINE_ENTROPY
+from streamlit_ace import st_ace
 from database_utils import initialize_db, hash_password, verify_password
+
+st.set_page_config(page_title='SuperSafe AI', layout='wide', initial_sidebar_state='collapsed')
 
 def set_page(page):
     st.session_state.page = page
 
 if "page" not in st.session_state:
-    st.session_state.page = "login"
+    st.session_state.page = "home"
+
+
+def home_page():
+    st.markdown("""
+    <style>
+        .stApp {
+            background-color: #0e1117;
+            color: #ffffff;
+        }
+        div[data-testid="stVerticalBlock"] {
+            background-color: #1e1e1e;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+            max-width: 800px; /* Set max-width for the home container */
+            margin: 0 auto;   /* Center the home container */
+            text-align: center;
+        }
+        h1 {
+            color: #4CAF50;
+            font-size: 2.5em;
+            margin-bottom: 0.5em;
+        }
+        p {
+            color: #cccccc;
+            font-size: 1.1em;
+            line-height: 1.6;
+            margin-bottom: 2em;
+        }
+        .stButton > button {
+            width: auto;
+            padding: 10px 30px;
+            border-radius: 20px;
+            border: 1px solid #4CAF50;
+            color: #ffffff;
+            background-color: #4CAF50;
+            font-size: 1.2em;
+            cursor: pointer;
+            display: block;
+            margin: 0 auto;
+        }
+        .stButton > button:hover {
+            background-color: #45a049;
+            border-color: #45a049;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<div style=\'text-align: center;\'>" \
+                "<h1>SuperSafe: AI-powered Secure Coding</h1>" \
+                "<p>An interactive AI coding mentor that identifies security risks—like hard-coded API keys—and teaches developers to build safer, production-ready software.</p>" \
+                "</div>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True) # Add some space
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("Get Started", use_container_width=True):
+            st.session_state.page = "login"
+            st.rerun()
+
+
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -153,7 +215,7 @@ def dashboard_page():
     st.write("### Security Points")
     st.metric(label="Total Points", value="1250", delta="50")
 
-    col1, col2, col3 = st.columns([2, 1, 1])
+    col1, col2, col3 = st.columns([1, 1, 1])
 
     with col1:
         with st.container():
@@ -245,7 +307,9 @@ def workspace_page():
     st.markdown("<h1 style=\'color: #4CAF50;\'>Active Workspace</h1>", unsafe_allow_html=True)
     st_ace(value=st.session_state.code_input, language="python", theme="dracula", height=500, key="code_input")
 
-if st.session_state.page == "login":
+if st.session_state.page == "home":
+    home_page()
+elif st.session_state.page == "login":
     login_page()
 elif st.session_state.page == "dashboard":
     dashboard_page()
