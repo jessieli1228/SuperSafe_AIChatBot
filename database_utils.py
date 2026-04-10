@@ -51,12 +51,13 @@ def load_messages(user_id):
 
 def hash_password(password):
     salt = os.urandom(16)
-    pwdhash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
+    # Migrated to SHA-512 in Week 5 for enhanced cryptographic strength.
+    pwdhash = hashlib.pbkdf2_hmac('sha512', password.encode('utf-8'), salt, 100000)
     return pwdhash.hex(), salt.hex()
 
 def verify_password(entered_password, stored_hash, salt):
     salt_bytes = bytes.fromhex(salt)
-    entered_pwdhash = hashlib.pbkdf2_hmac('sha256', entered_password.encode('utf-8'), salt_bytes, 100000)
+    entered_pwdhash = hashlib.pbkdf2_hmac('sha512', entered_password.encode('utf-8'), salt_bytes, 100000)
     return entered_pwdhash.hex() == stored_hash
 
 def clear_chat_history(user_id):
