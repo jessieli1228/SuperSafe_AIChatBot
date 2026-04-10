@@ -251,38 +251,60 @@ def render_unified_chatbot(context_label, context_data=""):
     Handles both Workspace code and Learning Page tutorials.
     """
     st.markdown("### 🤖 Security & Study Mentor")
-    
-def render_unified_chatbot(context_label, context_data=""):
-    """
-    One bot to rule them all. 
-    Handles both Workspace code and Learning Page tutorials.
-    """
-    st.markdown("### 🤖 Security & Study Mentor")
-    
-    # The chat messages display and input should be outside of the fragment
-    # to ensure they are re-rendered correctly after a clear.
-    # The heartbeat fragment should not interfere with the main chat display.
-    # It's already defined outside of render_unified_chatbot, so it won't interfere.
-    
-    # Clear Chat History Button
-    if st.button("Clear Chat History"):
-        clear_chat_history(st.session_state.user_id)  # Clear DB
-        st.session_state.messages = []  # Clear UI Memory
-        st.session_state["messages"] = []
-        st.success("Chat history wiped locally and on disk.")
-        st.rerun()  # Force the whole app to restart.
+
+    if "hide_history" not in st.session_state:
+        st.session_state.hide_history = False
+
+    st.markdown("""
+        <style>
+            .stButton > button {
+                font-size: 12px !important;
+                padding: 4px 8px !important;
+                border-radius: 5px !important;
+                height: auto !important;
+                width: auto !important;
+            }
+            .clear-chat-memory-button > button {
+                background-color: #e0e0e0 !important;
+                color: #333333 !important; 
+                border: 1px solid #c0c0c0 !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns([1, 1.2])
+    with col1:
+        if st.button("Clear Chat Memory", key="permanent_wipe", help="Deletes all chat messages from the database and clears the current chat view.", use_container_width=True):
+            clear_chat_history(st.session_state.user_id)  # Clear DB
+            st.session_state.messages = []  # Clear UI Memory
+            st.session_state.hide_history = False # Reset hide_history
+            st.success("Chat history wiped locally and on disk.")
+            st.rerun()  # Force the whole app to restart.
+    with col2:
+        if st.button("Hide History (Memory Saved)", key="soft_clear", help="Clears the current chat view, but keeps messages in the database for future context.", use_container_width=True):
+            st.session_state.messages = []  # Clear UI Memory
+            st.session_state.hide_history = True
+            st.success("Chat view cleared.")
+            st.rerun()  # Force the whole app to restart.
 
     with st.container(height=650, border=True):
-        if "messages" not in st.session_state:
+        # Only load messages from DB if not hiding history and current session messages are empty
+        if not st.session_state.hide_history and ("messages" not in st.session_state or not st.session_state.messages):
             st.session_state.messages = load_messages(st.session_state.user_id)
 
-        # Display history
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+        # Display history conditionally
+        if not st.session_state.hide_history:
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
         
         # Chat Input
         if prompt := st.chat_input(f"Ask your {context_label} mentor..."):
+            # If new messages are being added, ensure full history (from DB) is in session_state
+            if st.session_state.hide_history:
+                st.session_state.hide_history = False # Reset hide_history when user sends a new message
+                st.session_state.messages = load_messages(st.session_state.user_id) # Reload all messages from DB
+
             st.session_state.messages.append({"role": "user", "content": prompt})
             save_message(st.session_state.user_id, 'user', prompt)
             with st.chat_message("user"):
@@ -309,7 +331,7 @@ def render_unified_chatbot(context_label, context_data=""):
                             "content": (
                                 "You are a Python Security & Education Mentor. "
                                 "Your goal is to help users write secure code and understand cybersecurity concepts. "
-                                "Be concise, encouraging, and always provide one brief \\\'Would you like to...\\\' "
+                                "Be concise, encouraging, and always provide one brief \\\"Would you like to...\\\" "
                                 "follow-up question at the end of every response."
                             )
                         },
@@ -412,6 +434,7 @@ def workspace_page():
         render_unified_chatbot("Workspace", editor_content)
 
 def learning_page():
+
     left_col, right_col = st.columns([2, 1], gap="medium")
 
     with left_col:
