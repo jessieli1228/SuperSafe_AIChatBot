@@ -252,13 +252,25 @@ def render_unified_chatbot(context_label, context_data=""):
     """
     st.markdown("### 🤖 Security & Study Mentor")
     
+def render_unified_chatbot(context_label, context_data=""):
+    """
+    One bot to rule them all. 
+    Handles both Workspace code and Learning Page tutorials.
+    """
+    st.markdown("### 🤖 Security & Study Mentor")
+    
+    # The chat messages display and input should be outside of the fragment
+    # to ensure they are re-rendered correctly after a clear.
+    # The heartbeat fragment should not interfere with the main chat display.
+    # It's already defined outside of render_unified_chatbot, so it won't interfere.
+    
     # Clear Chat History Button
     if st.button("Clear Chat History"):
-        clear_chat_history(st.session_state.user_id)
-        st.session_state.messages = []
-        # Add a system message to indicate chat cleared for AI context
-        st.session_state.messages.append({"role": "system", "content": "User has cleared the chat history. Start fresh."})
-        st.rerun()
+        clear_chat_history(st.session_state.user_id)  # Clear DB
+        st.session_state.messages = []  # Clear UI Memory
+        st.session_state["messages"] = []
+        st.success("Chat history wiped locally and on disk.")
+        st.rerun()  # Force the whole app to restart.
 
     with st.container(height=650, border=True):
         if "messages" not in st.session_state:
@@ -434,3 +446,12 @@ elif st.session_state.page == "workspace":
     workspace_page()
 elif st.session_state.page == "training":
     learning_page()
+
+# Streamlit heartbeat fragment to keep the websocket connection alive
+@st.fragment(run_every=60)
+def heartbeat():
+    with st.empty():
+        # A small, invisible timer to keep the connection alive
+        pass
+
+heartbeat()
