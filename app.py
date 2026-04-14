@@ -85,8 +85,10 @@ def home_page():
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
-if 'code_input' not in st.session_state:
-    st.session_state.code_input = ''
+if 'files' not in st.session_state:
+    st.session_state.files = {"main.py": ""}
+if 'active_file' not in st.session_state:
+    st.session_state.active_file = 'main.py'
 def login_page():
     # Toggle between Login and Sign Up
     st.session_state.auth_mode = st.radio("", ["Login", "Sign Up"], key="auth_toggle_radio", horizontal=True)
@@ -384,54 +386,114 @@ def workspace_page():
     # This creates the two-pane layout: 2 parts for code/graph, 1 part for chat
     left_col, right_col = st.columns([2, 1], gap="medium")
 
+    # Sidebar for file navigation
+    with st.sidebar:
+        st.markdown("### 📁 Project Files")
+        def set_active_file(filename):
+            st.session_state.active_file = filename
+            st.rerun()
+
+        for filename in st.session_state.files.keys():
+            # Highlight the active file button
+            label = f"📄 {filename}" if filename == st.session_state.active_file else filename
+            if st.button(label, key=f"file_button_{filename}", use_container_width=True):
+                set_active_file(filename)
+
+        with st.expander("➕ New File", expanded=False):
+            new_filename = st.text_input("New filename", key="new_filename_input")
+            if st.button("Create File"):
+                if new_filename and new_filename not in st.session_state.files:
+                    st.session_state.files[new_filename] = ""
+                    st.session_state.active_file = new_filename # Set new file as active
+                    st.rerun()
+                elif new_filename:
+                    st.error("File already exists.")
+                else:
+                    st.error("Filename cannot be empty.")
+
     with left_col:
         # --- TOP: Editor Box ---
-        st.markdown("### 📝 Python Workspace")
-        # Ensure the \'NoneType\' safety check we did earlier is still here
-        editor_content = (st.session_state.get("code_editor") or "").strip()
+        st.markdown(f"### 📝 {st.session_state.active_file}")
         
-        code_content = st_ace(value=st.session_state.code_input, language="python", theme="dracula", height=500, key="code_editor")
+        # Create a temporary key that Streamlit uses to store the editor's live state
+        editor_state_key = f"editor_state_{st.session_state.active_file}"
 
+        code_content = st_ace(
+            value=st.session_state.files.get(st.session_state.active_file, ""), 
+            language="python", 
+            theme="dracula", 
+            height=500, 
+            key=editor_state_key, # Use the state key
+            auto_update=True  
+        )
+
+        # SINGLE Entropy Check Block
         if code_content:
             histogram_data = generate_entropy_histogram_data(code_content)
-            max_entropy = max(histogram_data) if histogram_data else 0.0
-            if max_entropy > DANGER_THRESHOLD:
-                st.error(f"⚠️ CRITICAL RISK: High-entropy string detected above {DANGER_THRESHOLD:.2f} bits.")
+            if histogram_data: # Ensure we have data before calculating max
+                max_entropy = max(histogram_data)
+                if max_entropy > DANGER_THRESHOLD:
+                    st.error(f"⚠️ CRITICAL RISK: High-entropy string detected ({max_entropy:.2f} bits).")
+
+        # SYNC: Update the master dictionary quietly
+        if code_content != st.session_state.files.get(st.session_state.active_file, ""):
+            st.session_state.files[st.session_state.active_file] = code_content
+            st.caption("✅ Syncing...")
+        
         
         st.button("← Back to Dashboard", on_click=lambda: st.session_state.update({"page": "dashboard"}))
 
         # --- BOTTOM: Graph Box ---
         st.markdown("---")
         st.markdown("### 📊 Security Distribution")
-        if code_content:
-            if histogram_data:
-                import pandas as pd
-                import plotly.graph_objects as go
 
-                df = pd.DataFrame({"Line Number": range(1, len(histogram_data) + 1), "Entropy": histogram_data})
-                colors = ["#FF4B4B" if entropy > DANGER_THRESHOLD else "#636EFA" for entropy in df["Entropy"]]
-                fig = go.Figure(data=[go.Bar(x=df["Line Number"], y=df["Entropy"], marker_color=colors)])
-
-                # Add reference lines
-                fig.add_hline(y=AVERAGE_BASELINE, line_dash="dash", line_color="green", annotation_text=f"Average Baseline Entropy ({AVERAGE_BASELINE:.2f})", annotation_position="top right")
-                fig.add_hline(y=DANGER_THRESHOLD, line_dash="solid", line_color="red", annotation_text=f"Danger ({DANGER_THRESHOLD:.2f})", annotation_position="top left")
-
-                fig.update_layout(
-                    xaxis_title="Line Number",
-                    yaxis_title="Entropy Score",
-                    font=dict(color="white")
-                )
-
-                st.plotly_chart(fig, use_container_width=True, theme=None)
-                st.metric(label="Max Line Entropy", value=f"{max_entropy:.2f}", delta=f"{max_entropy - DANGER_THRESHOLD:.2f}", delta_color="inverse")
+        if st.button("🔍 Run Security Audit", use_container_width=True):
+            if code_content:
+                st.session_state.histogram_data = generate_entropy_histogram_data(code_content)
+                st.session_state.max_entropy = max(st.session_state.histogram_data) if st.session_state.histogram_data else 0.0
             else:
-                st.info("Enter code to see entropy distribution.")
+                st.session_state.histogram_data = None
+                st.session_state.max_entropy = 0.0
+            st.rerun()
+
+        st.caption("(or press CMD+ENTER)")
+
+        if st.session_state.get("histogram_data"):
+            import pandas as pd
+            import plotly.graph_objects as go
+
+            df = pd.DataFrame({"Line Number": range(1, len(st.session_state.histogram_data) + 1), "Entropy": st.session_state.histogram_data})
+            colors = ["#FF4B4B" if entropy > DANGER_THRESHOLD else "#636EFA" for entropy in df["Entropy"]]
+            fig = go.Figure(data=[go.Bar(x=df["Line Number"], y=df["Entropy"], marker_color=colors)])
+
+            # Add reference lines
+            fig.add_hline(y=AVERAGE_BASELINE, line_dash="dash", line_color="green", annotation_text=f"Average Baseline Entropy ({AVERAGE_BASELINE:.2f})", annotation_position="top right")
+            fig.add_hline(y=DANGER_THRESHOLD, line_dash="solid", line_color="red", annotation_text=f"Danger ({DANGER_THRESHOLD:.2f})", annotation_position="top left")
+
+            fig.update_layout(
+                xaxis=dict(
+                    tickmode='linear', 
+                    tick0=1, 
+                    dtick=1,
+                    title="Line Number"
+                ),
+                yaxis_title="Entropy Score",
+                font=dict(color="white"),
+                margin=dict(l=20, r=20, t=20, b=20)
+            )
+
+            st.plotly_chart(fig, use_container_width=True, theme=None)
+            st.metric(label="Max Line Entropy", value=f"{st.session_state.max_entropy:.2f}", delta=f"{st.session_state.max_entropy - DANGER_THRESHOLD:.2f}", delta_color="inverse")
         else:
-            st.info("Enter code to see entropy distribution.")
+            st.info("Click \"Run Security Audit\" to see entropy distribution.")
 
     with right_col:
-        # Pass the editor code as context
-        render_unified_chatbot("Workspace", editor_content)
+        # Pass all files content as context
+        all_files_content = """
+"""
+        for filename, content in st.session_state.files.items():
+            all_files_content += f"File: {filename}\n```python\n{content}\n```\n\n"
+        render_unified_chatbot("Workspace", all_files_content)
 
 def learning_page():
 
