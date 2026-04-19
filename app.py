@@ -1,18 +1,36 @@
 import streamlit as st
+import google.generativeai as genai
 import sqlite3
-from openai import OpenAI
 
-client = OpenAI(
-    api_key=st.secrets["GEMINI_API_KEY"],
-    base_url="https://api.apiyi.com/v1"
-)
+from database_utils import initialize_db, hash_password, verify_password, get_user_id, save_message, load_messages, clear_chat_history
+
+initialize_db()
+
+MODEL_MAPPING = {
+    'gemma-3-27b-it (in-depth response)': 'models/gemma-3-27b-it',
+    'gemini-flash-2.5 (standard response)': 'models/gemini-2.5-flash',
+    'gemma-3-4b-it (fast response)': 'models/gemma-3-4b-it'
+}
+model_id = "models/gemini-2.5-flash"
+
+if st.session_state.get('logged_in', False):
+    with st.sidebar:
+        st.title("Settings")
+       
+        selected_model_display = st.selectbox("Select Model", list(MODEL_MAPPING.keys()))
+        
+        model_id = MODEL_MAPPING[selected_model_display]
+
+
+
+genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+
 from security_utils import generate_entropy_histogram_data
 
 from streamlit_ace import st_ace
 
 AVERAGE_BASELINE = 3.01
 DANGER_THRESHOLD = 4.50
-from database_utils import initialize_db, hash_password, verify_password, get_user_id, save_message, load_messages, clear_chat_history
 st.set_page_config(page_title="SuperSafe AI", layout="wide", initial_sidebar_state="collapsed")
 
 def set_page(page):
@@ -21,6 +39,13 @@ def set_page(page):
 if "page" not in st.session_state:
     st.session_state.page = "home"
 
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+if "files" not in st.session_state:
+    st.session_state.files = {"main.py": ""}
+if "active_file" not in st.session_state:
+    st.session_state.active_file = "main.py"
 
 def home_page():
     st.markdown("""
@@ -141,8 +166,6 @@ def login_page():
             st.text_input("Password", type="password", key="password")
             submit_text = 'Login' if st.session_state.auth_mode == 'Login' else 'Create Account'
             if st.form_submit_button(submit_text):
-                # Placeholder for actual database verification
-                initialize_db()
                 conn = sqlite3.connect("users.db")
                 c = conn.cursor()
 
@@ -153,14 +176,13 @@ def login_page():
                         stored_hash, stored_salt = user[1], user[2]
                         if verify_password(st.session_state.password, stored_hash, stored_salt):
                             st.session_state.logged_in = True
-                            st.session_state.user_id = user[0]  # Store user_id
-                            st.session_state.messages = load_messages(st.session_state.user_id) # Load messages
+                            st.session_state.user_id = get_user_id(st.session_state.username)
                             set_page("dashboard")
                             st.rerun()
                         else:
-                            st.error("Invalid username or password")
+                            st.error("Invalid credentials")
                     else:
-                        st.error("Invalid username or password")
+                        st.error("Invalid credentials")
                 else: # Sign Up mode
                     c.execute("SELECT * FROM users WHERE username = ?", (st.session_state.username,))
                     user = c.fetchone()
@@ -252,61 +274,33 @@ def render_unified_chatbot(context_label, context_data=""):
     One bot to rule them all. 
     Handles both Workspace code and Learning Page tutorials.
     """
-    st.markdown("### 🤖 Security & Study Mentor")
-
-    if "hide_history" not in st.session_state:
-        st.session_state.hide_history = False
-
-    st.markdown("""
-        <style>
-            .stButton > button {
-                font-size: 12px !important;
-                padding: 4px 8px !important;
-                border-radius: 5px !important;
-                height: auto !important;
-                width: auto !important;
-            }
-            .clear-chat-memory-button > button {
-                background-color: #e0e0e0 !important;
-                color: #333333 !important; 
-                border: 1px solid #c0c0c0 !important;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-
     col1, col2 = st.columns([1, 1.2])
     with col1:
-        if st.button("Clear Chat Memory", key="permanent_wipe", help="Deletes all chat messages from the database and clears the current chat view.", use_container_width=True):
-            clear_chat_history(st.session_state.user_id)  # Clear DB
-            st.session_state.messages = []  # Clear UI Memory
-            st.session_state.hide_history = False # Reset hide_history
-            st.success("Chat history wiped locally and on disk.")
-            st.rerun()  # Force the whole app to restart.
+        if st.button('Clear Chat Memory', key='permanent_wipe', help='Deletes all chat messages and clears the current chat view.', use_container_width=True):
+            st.session_state.messages = []
+            st.session_state.hide_history = False
+            st.success('Chat history wiped.')
+            st.rerun()
     with col2:
-        if st.button("Hide History (Memory Saved)", key="soft_clear", help="Clears the current chat view, but keeps messages in the database for future context.", use_container_width=True):
-            st.session_state.messages = []  # Clear UI Memory
+        if st.button('Hide History (Memory Saved)', key='soft_clear', help='Clears view but keeps background memory.', use_container_width=True):
+            st.session_state.messages = []
             st.session_state.hide_history = True
-            st.success("Chat view cleared.")
-            st.rerun()  # Force the whole app to restart.
+            st.success('Chat view cleared.')
+            st.rerun()
 
+    st.markdown("### 🤖 Security & Study Mentor")
+    
     with st.container(height=650, border=True):
-        # Only load messages from DB if not hiding history and current session messages are empty
-        if not st.session_state.hide_history and ("messages" not in st.session_state or not st.session_state.messages):
-            st.session_state.messages = load_messages(st.session_state.user_id)
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
 
-        # Display history conditionally
-        if not st.session_state.hide_history:
-            for message in st.session_state.messages:
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
+        # Display history
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
         
         # Chat Input
         if prompt := st.chat_input(f"Ask your {context_label} mentor..."):
-            # If new messages are being added, ensure full history (from DB) is in session_state
-            if st.session_state.hide_history:
-                st.session_state.hide_history = False # Reset hide_history when user sends a new message
-                st.session_state.messages = load_messages(st.session_state.user_id) # Reload all messages from DB
-
             st.session_state.messages.append({"role": "user", "content": prompt})
             save_message(st.session_state.user_id, 'user', prompt)
             with st.chat_message("user"):
@@ -316,32 +310,34 @@ def render_unified_chatbot(context_label, context_data=""):
             # We combine the Page Context (Code or Lesson) with the User Question
             full_message = f"[{context_label} Context]\n{context_data}\n\nUser Question: {prompt}"
             
-            # Include all past messages for context, including the new system message if present
-            ai_messages = []
-            if st.session_state.messages and st.session_state.messages[0]["role"] == "system":
-                ai_messages.append(st.session_state.messages[0])
-            ai_messages.extend([{"role": m["role"], "content": m["content"]} for m in st.session_state.messages if m["role"] != "system"])
-            
-            ai_messages.append({"role": "user", "content": full_message})
-
             with st.chat_message("assistant"):
-                response = client.chat.completions.create(
-                    model="gemini-2.5-flash",
-                    messages=[
-                        {
-                            "role": "system", 
-                            "content": (
-                                "You are a Python Security & Education Mentor. "
-                                "Your goal is to help users write secure code and understand cybersecurity concepts. "
-                                "Be concise, encouraging, and always provide one brief \\\"Would you like to...\\\" "
-                                "follow-up question at the end of every response."
-                            )
-                        },
-                        *ai_messages # Pass all messages for context
-                    ]
+                # Define the system prompt text
+                SYSTEM_PROMPT = (
+                    "You are a Python Security & Education Mentor. "
+                    "Your goal is to help users write secure code and understand cybersecurity concepts. "
+                    "Be concise, encouraging, and always provide one brief follow-up question."
                 )
-                answer = response.choices[0].message.content
+
+                # Initialize the model using the ID selected in your sidebar
+                if "gemini" in model_id.lower():
+                    model = genai.GenerativeModel(
+                        model_name=model_id,
+                        system_instruction=SYSTEM_PROMPT
+                    )
+                    # Generate the response using the Google SDK syntax
+                    response = model.generate_content(full_message)
+                else: # For models that don't support system_instruction, like Gemma
+                    model = genai.GenerativeModel(
+                        model_name=model_id
+                    )
+                    # Prepend the system prompt to the message
+                    full_message_with_system_prompt = f"{SYSTEM_PROMPT}\n\n{full_message}"
+                    response = model.generate_content(full_message_with_system_prompt)
+                answer = response.text
+                
                 st.markdown(answer)
+                
+                # Store the assistant's response
                 st.session_state.messages.append({"role": "assistant", "content": answer})
                 save_message(st.session_state.user_id, "assistant", answer)
 
@@ -386,30 +382,25 @@ def workspace_page():
     # This creates the two-pane layout: 2 parts for code/graph, 1 part for chat
     left_col, right_col = st.columns([2, 1], gap="medium")
 
-    # Sidebar for file navigation
     with st.sidebar:
-        st.markdown("### 📁 Project Files")
-        def set_active_file(filename):
-            st.session_state.active_file = filename
-            st.rerun()
-
+        st.markdown('### 📁 Project Files')
         for filename in st.session_state.files.keys():
-            # Highlight the active file button
-            label = f"📄 {filename}" if filename == st.session_state.active_file else filename
-            if st.button(label, key=f"file_button_{filename}", use_container_width=True):
-                set_active_file(filename)
+            label = f'📄 {filename}' if filename == st.session_state.active_file else filename
+            if st.button(label, key=f'file_button_{filename}', use_container_width=True):
+                st.session_state.active_file = filename
+                st.rerun()
 
-        with st.expander("➕ New File", expanded=False):
-            new_filename = st.text_input("New filename", key="new_filename_input")
-            if st.button("Create File"):
+        with st.expander('➕ New File', expanded=False):
+            new_filename = st.text_input('New filename', key='new_filename_input')
+            if st.button('Create File'):
                 if new_filename and new_filename not in st.session_state.files:
-                    st.session_state.files[new_filename] = ""
-                    st.session_state.active_file = new_filename # Set new file as active
+                    st.session_state.files[new_filename] = ''
+                    st.session_state.active_file = new_filename
                     st.rerun()
                 elif new_filename:
-                    st.error("File already exists.")
+                    st.error('File already exists.')
                 else:
-                    st.error("Filename cannot be empty.")
+                    st.error('Filename cannot be empty.')
 
     with left_col:
         # --- TOP: Editor Box ---
@@ -531,6 +522,15 @@ elif st.session_state.page == "workspace":
     workspace_page()
 elif st.session_state.page == "training":
     learning_page()
+
+# Streamlit heartbeat fragment to keep the websocket connection alive
+@st.fragment(run_every=60)
+def heartbeat():
+    with st.empty():
+        # A small, invisible timer to keep the connection alive
+        pass
+
+heartbeat()
 
 # Streamlit heartbeat fragment to keep the websocket connection alive
 @st.fragment(run_every=60)
