@@ -173,16 +173,36 @@ def login_page():
                     else:
                         st.error("Invalid username or password")
                 else: # Sign Up mode
+                    st.info("💡 **Security Tip:** A strong password should have an entropy score above **3.5**. Try mixing uppercase, numbers, and symbols!")
+                    
                     c.execute("SELECT * FROM users WHERE username = ?", (st.session_state.username,))
                     user = c.fetchone()
+                    
                     if user:
                         st.error("Username already exists. Please choose a different one.")
                     else:
-                        hashed_password, salt = hash_password(st.session_state.password)
-                        c.execute("INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)",
-                                  (st.session_state.username, hashed_password, salt))
-                        conn.commit()
-                        st.success("Account created successfully! Please log in.")
+                        from security_utils import calculate_entropy
+                        
+                        # Calculate entropy on the fly
+                        pw_entropy = calculate_entropy(st.session_state.password)
+                        
+                        # Visual feedback on current strength
+                        if pw_entropy == 0:
+                            st.write("Strength: ⚪ Waiting for input...")
+                        elif pw_entropy < 3.5:
+                            st.warning(f"Strength: 🟠 Weak ({pw_entropy:.2f} bits). Goal: > 3.5")
+                        else:
+                            st.success(f"Strength: 🟢 Strong ({pw_entropy:.2f} bits)!")
+
+                        if st.form_submit_button("Create Account"):
+                            if pw_entropy < 3.5:
+                                st.error("❌ Password is too weak. Please add more complexity.")
+                            else:
+                                hashed_password, salt = hash_password(st.session_state.password)
+                                c.execute("INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)",
+                                          (st.session_state.username, hashed_password, salt))
+                                conn.commit()
+                                st.success("✅ Secure account created! You can now log in.")
 
                 conn.close()
 
