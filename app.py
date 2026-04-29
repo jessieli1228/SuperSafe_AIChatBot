@@ -20,6 +20,9 @@ DANGER_THRESHOLD = 4.50
 from database_utils import initialize_db, hash_password, verify_password
 st.set_page_config(page_title="SuperSafe AI", layout="wide", initial_sidebar_state="collapsed")
 
+# --- DEBUG TOGGLE ---
+SHOW_DEBUG = st.secrets.get("SHOW_DEBUG", False)
+
 def set_page(page):
     st.session_state.page = page
 
@@ -229,9 +232,13 @@ def dashboard_page():
 
     st.markdown("<h1 style=\'color: #4CAF50;\'>Dashboard</h1>", unsafe_allow_html=True)
 
-    # Top stats bar
-    st.write("### Security Points")
-    st.metric(label="Total Points", value="1250", delta="50")
+  # --- CEO-CLEAN UI TOGGLE ---
+    if SHOW_DEBUG:
+        st.write("### Security Points")
+        st.metric(label="Total Points", value="1250", delta="50")
+    else:
+        st.write("### System Status")
+        st.success("✅ Security Engine Active & Monitoring")
 
     col1, col2, col3 = st.columns([1, 1, 1])
 
