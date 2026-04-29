@@ -243,13 +243,13 @@ def dashboard_page():
             .stButton > button {
                 width: 100%;
                 border-radius: 15px;
-                border: 1px solid #007bff;
+                border: 1px solid #4CAF50;
                 color: #ffffff;
-                background-color: #007bff;
+                background-color: #4CAF50;
             }
             .stButton > button:hover {
-                background-color: #0056b3;
-                border-color: #0056b3;
+                background-color: #45a049;
+                border-color: #45a049;
             }
             h2 {
                 color: #4CAF50;
@@ -569,30 +569,59 @@ def workspace_page():
             all_files_content += f"File: {filename}\n```python\n{content}\n```\n\n"
         render_unified_chatbot("Workspace", all_files_content)
 
-def learning_page():
+def learning_center_page():
+    # Split the screen into the Learning area (left) and Mentor area (right)
+    # Using [1.5, 1] to give the catalog more room
+    col_left, col_right = st.columns([1.5, 1])
 
-    left_col, right_col = st.columns([2, 1], gap="medium")
-
-    with left_col:
-        st.title("📚 Learning Center")
+    with col_left:
+        st.markdown("# 📚 Learning Center")
         
-        # Category Selector
-        level = st.radio("Select Level:", ["Beginner", "Intermediate"], horizontal=True)
+        # 1. MODULE SELECTION (Horizontal)
+        # We use a radio with horizontal=True to act like a tab bar
+        module_titles = [
+            "Mod 0: Foundations", "Mod 1: Secrets", "Mod 2: GitHub", 
+            "Mod 3: Safe Tools", "Mod 4: Patterns", "Mod 5: Robots"
+        ]
+        selected_mod = st.radio("Select Module:", module_titles, horizontal=True, label_visibility="collapsed")
+
+        st.divider()
+
+        # 2. CATALOG DATA
+        catalog = {
+            "Mod 0: Foundations": ["0.1 Variables & Data Types", "0.2 The input() Function", "0.3 F-Strings vs Concatenation", "0.4 Lists and Dictionaries"],
+            "Mod 1: Secrets": ["1.1 What is a 'Secret'?", "1.2 The .env File", "1.3 The Magic of .gitignore", "1.4 Oops, I Leaked It!"],
+            "Mod 2: GitHub": ["2.1 Public vs. Private", "2.2 Feature Branches", "2.3 The 'Forever' Memory"],
+            "Mod 3: Safe Tools": ["3.1 Package Safety", "3.2 VS Code Extensions", "3.3 Two-Factor Authentication (2FA)"],
+            "Mod 4: Patterns": ["4.1 Input Cleaning", "4.2 'Need to Know' Basis", "4.3 HTTP vs HTTPS"],
+            "Mod 5: Robots": ["5.1 Automatic Alerts", "5.2 Simple Scanners"]
+        }
+
+        # 3. LESSON BUTTONS (Vertical)
+        st.subheader(f"Current Path: {selected_mod}")
         
-        if level == "Beginner":
-            st.markdown("### 🟢 Beginner: Introduction to Entropy")
-            st.write("In this lesson, we learn why random-looking code is actually safer...")
-            # Add more text tutorials here
-        else:
-            st.markdown("### 🟡 Intermediate: Secure Password Hashing")
-            st.write("Learn how to use bcrypt and why salting prevents rainbow table attacks...")
+        current_lessons = catalog[selected_mod]
+        
+        # Create a button for each lesson
+        for lesson in current_lessons:
+            if st.button(lesson, use_container_width=True):
+                # For now, this just stores the selection
+                st.session_state.current_lesson = lesson
+        
+        # 4. LESSON CONTENT AREA
+        with st.container(border=True):
+            if 'current_lesson' in st.session_state:
+                st.write(f"### {st.session_state.current_lesson}")
+                st.info("Content coming soon! Ask the AI Mentor on the right if you have questions about this topic.")
+            else:
+                st.write("*Select a lesson above to begin reading.*")
 
-        if st.button("← Back to Dashboard"):
-            st.session_state.update({"page": "dashboard"})
+        if st.button("← Back to Dashboard", use_container_width=True):
+            set_page("dashboard")
+            st.rerun()
 
-    with right_col:
-        # Pass the current level as context
-        render_unified_chatbot("Learning Center", f"Current Level: {level}")
+    with col_right:
+        render_unified_chatbot("Learning Center", st.session_state.get("current_lesson", ""))
 
 
 if st.session_state.page == "home":
@@ -604,7 +633,7 @@ elif st.session_state.page == "dashboard":
 elif st.session_state.page == "workspace":
     workspace_page()
 elif st.session_state.page == "training":
-    learning_page()
+    learning_center_page()
 
 # Streamlit heartbeat fragment to keep the websocket connection alive
 @st.fragment(run_every=60)
