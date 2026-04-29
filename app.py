@@ -101,110 +101,123 @@ if 'files' not in st.session_state:
 if 'active_file' not in st.session_state:
     st.session_state.active_file = 'main.py'
 def login_page():
-    # Toggle between Login and Sign Up
-    st.session_state.auth_mode = st.radio("", ["Login", "Sign Up"], key="auth_toggle_radio", horizontal=True)
+    # 1. Inject Global CSS to match Homepage Card Style
+    st.markdown("""
+        <style>
+            /* Make the container dark, rounded, and centered like a dashboard card */
+            [data-testid="stVerticalBlockBorderWrapper"] {
+                background-color: #1e1e1e !important;
+                border-radius: 15px !important;
+                padding: 40px !important;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+                border: 1px solid #333 !important;
+            }
+            /* Style the Radio buttons to look like clean tabs */
+            div[data-testid="stWidgetLabel"] p {
+                font-size: 1.1rem !important;
+                font-weight: 600 !important;
+                color: #4CAF50 !important;
+            }
+            /* Big, professional Green Buttons */
+            .stButton button {
+                background-color: #4CAF50 !important;
+                color: white !important;
+                font-weight: bold !important;
+                height: 3.5rem !important;
+                border-radius: 10px !important;
+                border: none !important;
+                margin-top: 20px !important;
+                transition: 0.3s;
+            }
+            .stButton button:hover {
+                background-color: #45a049 !important;
+                transform: translateY(-2px);
+            }
+            h1 { color: #4CAF50; text-align: center; margin-bottom: 40px; }
+        </style>
+    """, unsafe_allow_html=True)
 
+    st.markdown("<h1>SuperSafe AI Mentor</h1>", unsafe_allow_html=True)
 
+    # 2. Balanced Layout: [1, 1.5, 1] makes the center card wide but centered
+    col1, col2, col3 = st.columns([1, 1.5, 1])
+    
+    with col2:
+        with st.container(border=True):
+            # Horizontal toggle for Login/Sign Up
+            mode = st.radio('', ['Login', 'Sign Up'], key="auth_mode_toggle", horizontal=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
 
-    st.markdown("<h1 style=\'text-align: center;\'>SuperSafe AI Mentor Login</h1>", unsafe_allow_html=True)
+            # Standard inputs (Outside a form for live entropy feedback)
+            username = st.text_input("Username", key="login_user", placeholder="Enter your username")
+            password = st.text_input("Password", type="password", key="login_pass", placeholder="Enter your password")
 
-    with st.container():
-        st.markdown(f"""
-            <style>
-                .stApp {{ 
-                    background-color: #0e1117;
-                    color: #ffffff;
-                }}
-                .stTextInput > label {{ 
-                    color: #ffffff;
-                }}
-                .stButton > button {{ 
-                    width: 100%;
-                    border-radius: 20px;
-                    border: 1px solid #4CAF50;
-                    color: #ffffff;
-                    background-color: #4CAF50;
-                }}
-                .stButton > button:hover {{ 
-                    background-color: #45a049;
-                    border-color: #45a049;
-                }}
-                div[data-testid="stVerticalBlock"] {{ 
-                    background-color: #1e1e1e;
-                    padding: 40px;
-                    border-radius: 10px;
-                    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
-                    max-width: 400px;
-                    margin: 0 auto;
-                }}
-                h1 {{ 
-                    color: #4CAF50;
-                }}
-            </style>
-        """, unsafe_allow_html=True)
-        
-        st.write("") # For spacing
-        st.write("") # For spacing
-        st.write("") # For spacing
-
-        with st.form("login_form"):
-            st.text_input("Username", key="username")
-            st.text_input("Password", type="password", key="password")
-            submit_text = 'Login' if st.session_state.auth_mode == 'Login' else 'Create Account'
-            if st.form_submit_button(submit_text):
-                # Placeholder for actual database verification
-                initialize_db()
-                conn = sqlite3.connect("users.db")
-                c = conn.cursor()
-
-                if st.session_state.auth_mode == "Login":
-                    c.execute("SELECT * FROM users WHERE username = ?", (st.session_state.username,))
-                    user = c.fetchone()
-                    if user:
-                        stored_hash, stored_salt = user[1], user[2]
-                        if verify_password(st.session_state.password, stored_hash, stored_salt):
-                            st.session_state.logged_in = True
-                            st.session_state.user_id = user[0]  # Store user_id
-                            # st.session_state.messages = load_messages(st.session_state.user_id) # Load messages
-                            set_page("dashboard")
-                            st.rerun()
-                        else:
-                            st.error("Invalid username or password")
-                    else:
-                        st.error("Invalid username or password")
-                else: # Sign Up mode
-                    st.info("💡 **Security Tip:** A strong password should have an entropy score above **3.5**. Try mixing uppercase, numbers, and symbols!")
+            if mode == "Sign Up":
+                from security_utils import calculate_entropy
+                pw_entropy = calculate_entropy(password)
+                
+                # Visual Feedback: Progress Bar + Label
+                if password:
+                    # Max entropy for common passwords is around 5.0
+                    progress_val = min(pw_entropy / 5.0, 1.0)
                     
-                    c.execute("SELECT * FROM users WHERE username = ?", (st.session_state.username,))
-                    user = c.fetchone()
-                    
-                    if user:
-                        st.error("Username already exists. Please choose a different one.")
+                    if pw_entropy < 3.5:
+                        st.write(f"Strength: 🟠 **{pw_entropy:.2f}** (Target: >3.5)")
+                        st.progress(progress_val)
+                        st.warning("Password is too weak for a security product.")
                     else:
-                        from security_utils import calculate_entropy
-                        
-                        # Calculate entropy on the fly
-                        pw_entropy = calculate_entropy(st.session_state.password)
-                        
-                        # Visual feedback on current strength
-                        if pw_entropy == 0:
-                            st.write("Strength: ⚪ Waiting for input...")
-                        elif pw_entropy < 3.5:
-                            st.warning(f"Strength: 🟠 Weak ({pw_entropy:.2f} bits). Goal: > 3.5")
+                        st.write(f"Strength: 🟢 **{pw_entropy:.2f}** (Secure)")
+                        st.progress(progress_val)
+                        st.success("Strong password detected!")
+                else:
+                    st.info("💡 Goal: Entropy score > **3.5** (mix cases, numbers, and symbols).")
+
+                if st.button("Create Secure Account", use_container_width=True):
+                    if pw_entropy < 3.5:
+                        st.error("❌ Minimum security standards not met.")
+                    else:
+                        # Existing Database Logic
+                        initialize_db()
+                        conn = sqlite3.connect("users.db")
+                        c = conn.cursor()
+                        c.execute("SELECT * FROM users WHERE username = ?", (username,))
+                        if c.fetchone():
+                            st.error("Username already taken.")
                         else:
-                            st.success(f"Strength: 🟢 Strong ({pw_entropy:.2f} bits)!")
+                            from database_utils import hash_password 
+                            hashed, salt = hash_password(password)
+                            c.execute("INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)", 
+                                      (username, hashed, salt))
+                            conn.commit()
+                            st.success("✅ Account Created! Now switch to Login mode.")
+                        conn.close()
 
-                        if st.form_submit_button("Create Account"):
-                            if pw_entropy < 3.5:
-                                st.error("❌ Password is too weak. Please add more complexity.")
-                            else:
-                                hashed_password, salt = hash_password(st.session_state.password)
-                                c.execute("INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)",
-                                          (st.session_state.username, hashed_password, salt))
-                                conn.commit()
-                                st.success("✅ Secure account created! You can now log in.")
-
-                conn.close()
+            else: # Login Mode
+                if st.button("Sign In to Dashboard", use_container_width=True):
+                    # Ensure database is ready
+                    from database_utils import initialize_db, verify_password
+                    initialize_db()
+                    
+                    conn = sqlite3.connect("users.db")
+                    c = conn.cursor()
+                    c.execute("SELECT * FROM users WHERE username = ?", (username,))
+                    user = c.fetchone()
+                    conn.close() # Close early to avoid locks
+                    
+                    if user and verify_password(password, user[1], user[2]):
+                        # 1. Set the flags your app uses to track login
+                        st.session_state.logged_in = True
+                        st.session_state.user_id = username
+                        
+                        # 2. Use your specific set_page function
+                        # Looking at your Line 23 in previous screenshots, it's set_page("dashboard")
+                        st.session_state.page = "dashboard" 
+                        
+                        # 3. Force the UI to refresh
+                        st.rerun()
+                    else:
+                        st.error("Invalid username or password. Please try again.")
 
 def dashboard_page():
 
