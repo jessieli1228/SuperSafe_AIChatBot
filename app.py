@@ -297,20 +297,6 @@ def render_unified_chatbot(context_label, context_data=""):
     One bot to rule them all. 
     Handles both Workspace code and Learning Page tutorials.
     """
-    col1, col2 = st.columns([1, 1.2])
-    with col1:
-        if st.button('Clear Chat Memory', key='permanent_wipe', help='Deletes all chat messages and clears the current chat view.', use_container_width=True):
-            st.session_state.messages = []
-            st.session_state.hide_history = False
-            st.success('Chat history wiped.')
-            st.rerun()
-    with col2:
-        if st.button('Hide History (Memory Saved)', key='soft_clear', help='Clears view but keeps background memory.', use_container_width=True):
-            st.session_state.messages = []
-            st.session_state.hide_history = True
-            st.success('Chat view cleared.')
-            st.rerun()
-
     st.markdown("### 🤖 Security & Study Mentor")
 
     if "hide_history" not in st.session_state:
@@ -408,7 +394,6 @@ def render_unified_chatbot(context_label, context_data=""):
                 save_chat_message(st.session_state.user_id, "assistant", answer)
                 # Store the assistant\'s response in the Google Generative AI SDK format
                 st.session_state.messages.append({"role": "assistant", "content": answer})
-                save_message(st.session_state.user_id, "assistant", answer)
 
 def workspace_page():
 
