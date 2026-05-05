@@ -515,7 +515,10 @@ def workspace_page():
             st.caption("✅ Syncing...")
         
         
-        st.button("← Back to Dashboard", on_click=lambda: st.session_state.update({"page": "dashboard"}))
+        st.write("---") # Adds a nice divider line above the button
+        if st.button("← Back to Dashboard", type="primary", use_container_width=True):
+            st.session_state.page = "dashboard"
+            st.rerun()
 
         # --- BOTTOM: Graph Box ---
         st.markdown("---")
@@ -579,7 +582,10 @@ def learning_center():
 
     st.title("📚 Secure Coding Learning Center")
     st.write("Professional modules on Python security.")
-
+    st.write("---") # Adds a nice divider line above the button
+    if st.button("← Back to Dashboard", type="primary", use_container_width=True):
+        st.session_state.page = "dashboard"
+        st.rerun()
     # FIX LAYOUT: Use a clean 2-column split (60/40)
     col_content, col_chat = st.columns([1.5, 1])
 
@@ -608,11 +614,7 @@ def learning_center():
             if st.button("Mark as Complete ✅"):
                 st.balloons()
             
-            if st.button("← Back to Dashboard"):
-                st.session_state.page = "dashboard"
-                st.rerun()
-        else:
-            st.info("👈 Open a module and select a lesson to begin.")
+            
 
     with col_chat:
         # 4. CHATBOT (Unified Rendering)
