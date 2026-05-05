@@ -1,13 +1,22 @@
 import streamlit as st
 import google.generativeai as genai
 import sqlite3
+import os
+
+# 1. Import the clean engine and the new database name
+from database_utils import initialize_db, hash_password, verify_password, save_chat_message, get_chat_history, DB_NAME
+
+# 2. Run the actual initialization
+initialize_db()
+
+# 3. Standard Configuration
+st.set_page_config(page_title="SuperSafe AI", layout="wide", initial_sidebar_state="collapsed")
 
 MODEL_MAPPING = {
     'gemma-3-27b-it (in-depth response)': 'models/gemma-3-27b-it',
     'gemini-flash-2.5 (standard response)': 'models/gemini-2.5-flash',
     'gemma-3-4b-it (fast response)': 'models/gemma-3-4b-it'
 }
-
 
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
@@ -17,8 +26,12 @@ from streamlit_ace import st_ace
 
 AVERAGE_BASELINE = 3.01
 DANGER_THRESHOLD = 4.50
-from database_utils import initialize_db, hash_password, verify_password
+from database_utils import initialize_db, hash_password, verify_password, save_chat_message, get_chat_history
+initialize_db()
 st.set_page_config(page_title="SuperSafe AI", layout="wide", initial_sidebar_state="collapsed")
+
+# --- DEBUG TOGGLE ---
+SHOW_DEBUG = st.secrets.get("SHOW_DEBUG", False)
 
 def set_page(page):
     st.session_state.page = page
@@ -26,8 +39,9 @@ def set_page(page):
 if "page" not in st.session_state:
     st.session_state.page = "home"
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# ADD THIS LINE HERE:
+if "selected_model_alias" not in st.session_state:
+    st.session_state.selected_model_alias = 'gemini-flash-2.5 (standard response)'
 
 
 def home_page():
@@ -98,105 +112,125 @@ if 'files' not in st.session_state:
 if 'active_file' not in st.session_state:
     st.session_state.active_file = 'main.py'
 def login_page():
-    # Toggle between Login and Sign Up
-    st.session_state.auth_mode = st.radio("", ["Login", "Sign Up"], key="auth_toggle_radio", horizontal=True)
+    # 1. Inject Global CSS to match Homepage Card Style
+    st.markdown("""
+        <style>
+            /* Make the container dark, rounded, and centered like a dashboard card */
+            [data-testid="stVerticalBlockBorderWrapper"] {
+                background-color: #1e1e1e !important;
+                border-radius: 15px !important;
+                padding: 40px !important;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+                border: 1px solid #333 !important;
+            }
+            /* Style the Radio buttons to look like clean tabs */
+            div[data-testid="stWidgetLabel"] p {
+                font-size: 1.1rem !important;
+                font-weight: 600 !important;
+                color: #4CAF50 !important;
+            }
+            /* Big, professional Green Buttons */
+            .stButton button {
+                background-color: #4CAF50 !important;
+                color: white !important;
+                font-weight: bold !important;
+                height: 3.5rem !important;
+                border-radius: 10px !important;
+                border: none !important;
+                margin-top: 20px !important;
+                transition: 0.3s;
+            }
+            .stButton button:hover {
+                background-color: #45a049 !important;
+                transform: translateY(-2px);
+            }
+            h1 { color: #4CAF50; text-align: center; margin-bottom: 40px; }
+        </style>
+    """, unsafe_allow_html=True)
 
+    st.markdown("<h1>SuperSafe AI Mentor</h1>", unsafe_allow_html=True)
 
+    # 2. Balanced Layout: [1, 1.5, 1] makes the center card wide but centered
+    col1, col2, col3 = st.columns([1, 1.5, 1])
+    
+    with col2:
+        with st.container(border=True):
+            # Horizontal toggle for Login/Sign Up
+            mode = st.radio('', ['Login', 'Sign Up'], key="auth_mode_toggle", horizontal=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
 
-    st.markdown("<h1 style=\'text-align: center;\'>SuperSafe AI Mentor Login</h1>", unsafe_allow_html=True)
+            # Standard inputs (Outside a form for live entropy feedback)
+            username = st.text_input("Username", key="login_user", placeholder="Enter your username")
+            password = st.text_input("Password", type="password", key="login_pass", placeholder="Enter your password")
 
-    with st.container():
-        st.markdown(f"""
-            <style>
-                .stApp {{ 
-                    background-color: #0e1117;
-                    color: #ffffff;
-                }}
-                .stTextInput > label {{ 
-                    color: #ffffff;
-                }}
-                .stButton > button {{ 
-                    width: 100%;
-                    border-radius: 20px;
-                    border: 1px solid #4CAF50;
-                    color: #ffffff;
-                    background-color: #4CAF50;
-                }}
-                .stButton > button:hover {{ 
-                    background-color: #45a049;
-                    border-color: #45a049;
-                }}
-                div[data-testid="stVerticalBlock"] {{ 
-                    background-color: #1e1e1e;
-                    padding: 40px;
-                    border-radius: 10px;
-                    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
-                    max-width: 400px;
-                    margin: 0 auto;
-                }}
-                h1 {{ 
-                    color: #4CAF50;
-                }}
-            </style>
-        """, unsafe_allow_html=True)
-        
-        st.write("") # For spacing
-        st.write("") # For spacing
-        st.write("") # For spacing
+            if mode == "Sign Up":
+                from security_utils import calculate_entropy
+                pw_entropy = calculate_entropy(password)
+                
+                # Visual Feedback: Progress Bar + Label
+                if password:
+                    # Max entropy for common passwords is around 5.0
+                    progress_val = min(pw_entropy / 5.0, 1.0)
+                    
+                    if pw_entropy < 3.5:
+                        st.write(f"Strength: 🟠 **{pw_entropy:.2f}** (Target: >3.5)")
+                        st.progress(progress_val)
+                        st.warning("Password is too weak for a security product.")
+                    else:
+                        st.write(f"Strength: 🟢 **{pw_entropy:.2f}** (Secure)")
+                        st.progress(progress_val)
+                        st.success("Strong password detected!")
+                else:
+                    st.info("💡 Goal: Entropy score > **3.5** (mix cases, numbers, and symbols).")
 
-        with st.form("login_form"):
-            st.text_input("Username", key="username")
-            st.text_input("Password", type="password", key="password")
-            submit_text = 'Login' if st.session_state.auth_mode == 'Login' else 'Create Account'
-            if st.form_submit_button(submit_text):
-                # Placeholder for actual database verification
-                initialize_db()
-                conn = sqlite3.connect("users.db")
-                c = conn.cursor()
-
-                if st.session_state.auth_mode == "Login":
-                    c.execute("SELECT * FROM users WHERE username = ?", (st.session_state.username,))
-                    user = c.fetchone()
-                    if user:
-                        stored_hash, stored_salt = user[1], user[2]
-                        if verify_password(st.session_state.password, stored_hash, stored_salt):
-                            st.session_state.logged_in = True
-                            st.session_state.user_id = user[0]  # Store user_id
-                            # st.session_state.messages = load_messages(st.session_state.user_id) # Load messages
-                            set_page("dashboard")
-                            st.rerun()
+                if st.button("Create Secure Account", use_container_width=True):
+                    if pw_entropy < 3.5:
+                        st.error("❌ Minimum security standards not met.")
+                    else:
+                        from database_utils import DB_NAME
+                        conn = sqlite3.connect(DB_NAME)
+                        c = conn.cursor()
+                        c.execute("SELECT * FROM users WHERE username = ?", (username,))
+                        if c.fetchone():
+                            st.error("Username already taken.")
                         else:
-                            st.error("Invalid username or password")
-                    else:
-                        st.error("Invalid username or password")
-                else: # Sign Up mode
-                    c.execute("SELECT * FROM users WHERE username = ?", (st.session_state.username,))
-                    user = c.fetchone()
-                    if user:
-                        st.error("Username already exists. Please choose a different one.")
-                    else:
-                        hashed_password, salt = hash_password(st.session_state.password)
-                        c.execute("INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)",
-                                  (st.session_state.username, hashed_password, salt))
-                        conn.commit()
-                        st.success("Account created successfully! Please log in.")
+                            from database_utils import hash_password 
+                            hashed, salt = hash_password(password)
+                            c.execute("INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)", 
+                                      (username, hashed, salt))
+                            conn.commit()
+                            st.success("✅ Account Created! Now switch to Login mode.")
+                        conn.close()
 
-                conn.close()
+            else: # Login Mode
+                if st.button("Sign In to Dashboard", use_container_width=True):
+                    
+                    from database_utils import DB_NAME
+                    conn = sqlite3.connect(DB_NAME)
+                    c = conn.cursor()
+                    c.execute("SELECT * FROM users WHERE username = ?", (username,))
+                    user = c.fetchone()
+                    conn.close() # Close early to avoid locks
+                    
+                    if user and verify_password(password, user[1], user[2]):
+                        st.session_state.logged_in = True
+                        st.session_state.user_id = username
+                        st.session_state.messages = get_chat_history(username) # Load chat history
+                        st.session_state.page = "dashboard" 
+                        st.rerun()
+                    else:
+                        st.error("Invalid username or password. Please try again.")
 
 def dashboard_page():
-
     st.markdown("""
         <style>
             .stApp { 
                 background-color: #0e1117;
                 color: #ffffff;
             }
-            .stMetric > div > div:first-child { /* Value */
-                color: #4CAF50;
-            }
-            .stMetric > div > div:nth-child(2) { /* Label */
-                color: #cccccc;
-            }
+            .stMetric > div > div:first-child { color: #4CAF50; }
+            .stMetric > div > div:nth-child(2) { color: #cccccc; }
             div[data-testid="stVerticalBlock"] {
                 background-color: #1e1e1e;
                 padding: 20px;
@@ -207,17 +241,15 @@ def dashboard_page():
             .stButton > button {
                 width: 100%;
                 border-radius: 15px;
-                border: 1px solid #007bff;
+                border: 1px solid #4CAF50;
                 color: #ffffff;
-                background-color: #007bff;
+                background-color: #4CAF50;
             }
             .stButton > button:hover {
-                background-color: #0056b3;
-                border-color: #0056b3;
+                background-color: #45a049;
+                border-color: #45a049;
             }
-            h2 {
-                color: #4CAF50;
-            }
+            h2 { color: #4CAF50; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -227,32 +259,37 @@ def dashboard_page():
         st.rerun()
         return
 
-    st.markdown("<h1 style=\'color: #4CAF50;\'>Dashboard</h1>", unsafe_allow_html=True)
+    
 
-    # Top stats bar
-    st.write("### Security Points")
-    st.metric(label="Total Points", value="1250", delta="50")
+    if not st.session_state.logged_in:
+        st.warning("Please login to access the dashboard.")
+        set_page("login")
+        st.rerun()
+        return
 
-    col1, col2, col3 = st.columns([1, 1, 1])
+    st.markdown("<h1 style='color: #4CAF50;'>Dashboard</h1>", unsafe_allow_html=True)
+
+    if SHOW_DEBUG:
+        st.write("### Security Points")
+        st.metric(label="Total Points", value="1250", delta="50")
+    else:
+        st.write("### System Status")
+        st.success("✅ Security Engine Active & Monitoring")
+
+    # Change from 3 columns to 2 columns to fill the space
+    col1, col2 = st.columns([1, 1])
 
     with col1:
         with st.container():
-            st.markdown("<h2>Resume Session</h2>", unsafe_allow_html=True)
-            st.progress(70)
-            st.write("Continue your last secure coding session.")
-            st.button("Resume", on_click=set_page, args=("workspace",))
+            st.markdown("<h2>New Code Segment</h2>", unsafe_allow_html=True)
+            st.write("Start analyzing a new piece of code.")
+            st.button("Start New", key="dash_start_new", on_click=set_page, args=("workspace",))
 
     with col2:
         with st.container():
-            st.markdown("<h2>New Code Segment</h2>", unsafe_allow_html=True)
-            st.write("Start analyzing a new piece of code.")
-            st.button("Start New", on_click=set_page, args=("workspace",))
-
-    with col3:
-        with st.container():
             st.markdown("<h2>Training Modules</h2>", unsafe_allow_html=True)
             st.write("Enhance your secure coding skills.")
-            st.button("Browse Modules", on_click=set_page, args=("training",))
+            st.button("Browse Modules", key="dash_browse_training", on_click=set_page, args=("training",))
 
 # New unified chatbot render function
 def render_unified_chatbot(context_label, context_data=""):
@@ -318,7 +355,9 @@ def render_unified_chatbot(context_label, context_data=""):
         # Chat Input
         if prompt := st.chat_input(f"Ask your {context_label} mentor..."):
             # Google Generative AI SDK expects content in 'parts' key
+            from database_utils import save_chat_message
             st.session_state.messages.append({"role": "user", "content": prompt})
+            save_chat_message(st.session_state.user_id, "user", prompt)
             with st.chat_message("user"):
                 st.markdown(prompt)
 
@@ -352,7 +391,8 @@ def render_unified_chatbot(context_label, context_data=""):
                 )
                 answer = response.text
                 st.markdown(answer)
-                # Store the assistant's response in the Google Generative AI SDK format
+                save_chat_message(st.session_state.user_id, "assistant", answer)
+                # Store the assistant\'s response in the Google Generative AI SDK format
                 st.session_state.messages.append({"role": "assistant", "content": answer})
 
 def workspace_page():
@@ -529,32 +569,65 @@ def workspace_page():
             all_files_content += f"File: {filename}\n```python\n{content}\n```\n\n"
         render_unified_chatbot("Workspace", all_files_content)
 
-def learning_page():
 
-    left_col, right_col = st.columns([2, 1], gap="medium")
+import streamlit as st
+from content import COURSE_CONTENT
 
-    with left_col:
-        st.title("📚 Learning Center")
-        
-        # Category Selector
-        level = st.radio("Select Level:", ["Beginner", "Intermediate"], horizontal=True)
-        
-        if level == "Beginner":
-            st.markdown("### 🟢 Beginner: Introduction to Entropy")
-            st.write("In this lesson, we learn why random-looking code is actually safer...")
-            # Add more text tutorials here
+def learning_center():
+    
+    
+
+    st.title("📚 Secure Coding Learning Center")
+    st.write("Professional modules on Python security.")
+
+    # FIX LAYOUT: Use a clean 2-column split (60/40)
+    col_content, col_chat = st.columns([1.5, 1])
+
+    with col_content:
+        # 1. Expandable Modules (The "Big Buttons")
+        for mod_name, lessons in COURSE_CONTENT.items():
+            with st.expander(f"📁 {mod_name}"):
+                # 2. Grid of Lesson Buttons
+                sub_cols = st.columns(2)
+                for i, lesson_title in enumerate(lessons.keys()):
+                    if sub_cols[i % 2].button(lesson_title, key=f"btn_{lesson_title}", use_container_width=True):
+                        st.session_state.active_lesson = (mod_name, lesson_title)
+
+        st.divider()
+
+        # 3. Reading Display
+        if "active_lesson" in st.session_state:
+            mod, les = st.session_state.active_lesson
+            data = COURSE_CONTENT[mod][les]
+
+            st.header(les)
+            st.markdown("### 📖 Lesson Content")
+            st.write(data["reading"])
+            st.warning(f"🛡️ **Security Mindset:**\n\n{data['security']}")
+            
+            if st.button("Mark as Complete ✅"):
+                st.balloons()
+            
+            if st.button("← Back to Dashboard"):
+                st.session_state.page = "dashboard"
+                st.rerun()
         else:
-            st.markdown("### 🟡 Intermediate: Secure Password Hashing")
-            st.write("Learn how to use bcrypt and why salting prevents rainbow table attacks...")
+            st.info("👈 Open a module and select a lesson to begin.")
 
-        if st.button("← Back to Dashboard"):
-            st.session_state.update({"page": "dashboard"})
+    with col_chat:
+        # 4. CHATBOT (Unified Rendering)
+        
+    
+        all_files_content = ""
+        if "files" in st.session_state:
+            for filename, content in st.session_state.files.items():
+                all_files_content += f"File: {filename}\n```python\n{content}\n```\n\n"
+        
+        if "render_unified_chatbot" in globals():
+            render_unified_chatbot("Learning Center", all_files_content)
 
-    with right_col:
-        # Pass the current level as context
-        render_unified_chatbot("Learning Center", f"Current Level: {level}")
 
-
+# --- PAGE ROUTING ---
 if st.session_state.page == "home":
     home_page()
 elif st.session_state.page == "login":
@@ -563,8 +636,8 @@ elif st.session_state.page == "dashboard":
     dashboard_page()
 elif st.session_state.page == "workspace":
     workspace_page()
-elif st.session_state.page == "training":
-    learning_page()
+elif st.session_state.page == "training": # This matches your dashboard button
+    learning_center()
 
 # Streamlit heartbeat fragment to keep the websocket connection alive
 @st.fragment(run_every=60)
