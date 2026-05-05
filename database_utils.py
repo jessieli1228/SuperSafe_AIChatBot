@@ -5,6 +5,29 @@ import os
 # Using a new filename to force the cloud to create a fresh, clean database
 DB_NAME = "users_v2.db"
 
+def get_user_id(username):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('SELECT rowid FROM users WHERE username = ?', (username,))
+    user_id = c.fetchone()
+    conn.close()
+    return user_id[0] if user_id else None
+
+def save_message(user_id, role, content):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('INSERT INTO chat_history (user_id, role, content) VALUES (?, ?, ?)', (user_id, role, content))
+    conn.commit()
+    conn.close()
+
+def load_messages(user_id):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('SELECT role, content FROM chat_history WHERE user_id = ? ORDER BY rowid', (user_id,))
+    messages = [{"role": row[0], "content": row[1]} for row in c.fetchall()]
+    conn.close()
+    return messages
+
 def hash_password(password):
     salt = os.urandom(16)
     pwdhash = hashlib.pbkdf2_hmac('sha512', password.encode('utf-8'), salt, 100000)

@@ -1,5 +1,7 @@
 import math
 from collections import Counter
+import hashlib
+import os
 
 def calculate_entropy(text):
     if not text:
@@ -18,6 +20,25 @@ def calculate_entropy(text):
         entropy -= p * math.log2(p)
         
     return entropy
+
+
+def hash_password(password, salt=None):
+    if salt is None:
+        salt = os.urandom(16)
+    else:
+        salt = bytes.fromhex(salt)
+    
+    hashed_password = hashlib.pbkdf2_hmac(
+        'sha256',
+        password.encode('utf-8'),
+        salt,
+        100000
+    )
+    return salt.hex(), hashed_password.hex()
+
+def verify_password(stored_salt, stored_password, provided_password):
+    salt, hashed_password = hash_password(provided_password, stored_salt)
+    return hashed_password == stored_password
 
 
 test_key = "AIzaSyB7_4fGk9z2W1m8p0Q5rX6tV3nL9sJ" 
@@ -70,3 +91,17 @@ def calculate_entropy(text):
 """
 histogram_data = generate_entropy_histogram_data(example_code)
 print(f"Histogram Data for Example Code: {histogram_data}")
+
+
+# Example usage of password hashing
+password = "mysecretpassword"
+salt, hashed_password = hash_password(password)
+print(f"Salt: {salt}")
+print(f"Hashed Password: {hashed_password}")
+
+# Verify the password
+is_valid = verify_password(salt, hashed_password, password)
+print(f"Password is valid: {is_valid}")
+
+is_invalid = verify_password(salt, hashed_password, "wrongpassword")
+print(f"Wrong password is valid: {is_invalid}")
