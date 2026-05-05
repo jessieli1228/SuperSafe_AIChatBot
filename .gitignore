@@ -4,3 +4,4 @@ __pycache__/
 .venv/
 .streamlit/
 check_models.py
+users.db
