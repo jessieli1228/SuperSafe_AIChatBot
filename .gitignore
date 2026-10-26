@@ -5,3 +5,7 @@ __pycache__/
 .streamlit/
 check_models.py
 users.db
+.venv/
+__pycache__/
+*.db
+.env
