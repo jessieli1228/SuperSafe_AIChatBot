@@ -10,7 +10,7 @@ from database_utils import initialize_db, hash_password, verify_password, save_c
 initialize_db()
 
 # 3. Standard Configuration
-st.set_page_config(page_title="SuperSafe AI", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="VaultCode", layout="wide", initial_sidebar_state="collapsed")
 
 MODEL_MAPPING = {
     'gemma-3-27b-it (in-depth response)': 'models/gemma-3-27b-it',
@@ -28,7 +28,7 @@ AVERAGE_BASELINE = 3.01
 DANGER_THRESHOLD = 4.50
 from database_utils import initialize_db, hash_password, verify_password, save_chat_message, get_chat_history
 initialize_db()
-st.set_page_config(page_title="SuperSafe AI", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="VaultCode", layout="wide", initial_sidebar_state="collapsed")
 
 # --- DEBUG TOGGLE ---
 SHOW_DEBUG = st.secrets.get("SHOW_DEBUG", False)
@@ -90,8 +90,8 @@ def home_page():
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<div style=\'text-align: center;\'>" \
-                "<h1>SuperSafe: AI-powered Secure Coding</h1>" \
+    st.markdown("<div style='text-align: center;'>" \
+                "<h1>VaultCode: AI-powered Secure Coding</h1>" \
                 "<p>An interactive AI coding mentor that identifies security risks—like hard-coded API keys—and teaches developers to build safer, production-ready software.</p>" \
                 "</div>", unsafe_allow_html=True)
 
@@ -148,7 +148,7 @@ def login_page():
         </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<h1>SuperSafe AI Mentor</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>VaultCode AI Mentor</h1>", unsafe_allow_html=True)
 
     # 2. Balanced Layout: [1, 1.5, 1] makes the center card wide but centered
     col1, col2, col3 = st.columns([1, 1.5, 1])
